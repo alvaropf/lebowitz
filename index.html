@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leibowitz Framework — P/B &amp; P/E Decomposition</title>
+<style>
+  :root{
+    --paper:#f4f1e8;          /* page background  */
+    --card:#fffdf8;           /* card background  */
+    --ink:#1c1a17;            /* near-black ink   */
+    --ink-soft:#5b554c;       /* muted body       */
+    --ink-faint:#8a8273;      /* captions/labels  */
+    --rule:#e3ddcf;           /* hairline rules   */
+    --rule-strong:#cfc7b4;
+    --book:#8d877d;           /* book value  (grey)     */
+    --moat:#42627f;           /* moat premium (slate blue) */
+    --growth:#bd553a;         /* growth premium (terracotta) */
+    --blue-tint:#eef1f6;
+    --blue-edge:#42627f;
+    --red-tint:#f8ece8;
+    --red-edge:#bd553a;
+    --shade:#ede8da;          /* highlighted table row  */
+    --good:#3f6f4f;
+    --bad:#b14a31;
+    --mono:"SFMono-Regular",ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);color:var(--ink);font-family:var(--sans);
+    font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  /* ---------- layout ---------- */
+  .shell{display:grid;grid-template-columns:300px 1fr;min-height:100vh}
+  .sidebar{
+    border-right:1px solid var(--rule);padding:34px 28px;position:sticky;top:0;
+    align-self:start;height:100vh;overflow-y:auto;
+  }
+  .main{padding:40px 48px 80px;max-width:1480px}
+  @media(max-width:1100px){
+    .shell{grid-template-columns:1fr}
+    .sidebar{position:static;height:auto;border-right:none;border-bottom:1px solid var(--rule)}
+    .main{padding:30px 22px 60px}
+  }
+  /* ---------- sidebar ---------- */
+  .eyebrow{
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink-faint);margin:0 0 18px;
+  }
+  .field-label{
+    font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink-soft);display:block;margin:0 0 8px;
+  }
+  select.country{
+    width:100%;font-family:var(--serif);font-size:18px;color:var(--ink);
+    background:var(--card);border:1px solid var(--rule-strong);border-radius:7px;
+    padding:13px 38px 13px 15px;cursor:pointer;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b554c' stroke-width='2.2'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 14px center;
+  }
+  select.country:focus-visible{outline:2px solid var(--moat);outline-offset:2px}
+
+  .stats{
+    margin-top:26px;background:var(--shade);border:1px solid var(--rule);border-radius:9px;
+    padding:18px 20px;
+  }
+  .stat{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    padding:8px 0;border-bottom:1px solid var(--rule-strong)}
+  .stat:last-child{border-bottom:none}
+  .stat label{font-size:14.5px;color:var(--ink-soft)}
+  .stat .val{display:flex;align-items:center;gap:7px}
+  .stat input{
+    width:74px;text-align:right;font-family:var(--mono);font-size:14.5px;color:var(--ink);
+    background:transparent;border:1px solid transparent;border-radius:5px;padding:3px 5px;
+  }
+  .stat input:hover{border-color:var(--rule-strong);background:#fff}
+  .stat input:focus{border-color:var(--moat);background:#fff;outline:none}
+  .stat .unit{font-family:var(--mono);font-size:13px;color:var(--ink-faint);width:14px}
+  .editnote{font-size:12px;color:var(--ink-faint);margin:14px 2px 0;line-height:1.45}
+  .reset{
+    margin-top:12px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    background:none;border:1px solid var(--rule-strong);border-radius:6px;color:var(--ink-soft);
+    padding:7px 12px;cursor:pointer;width:100%;
+  }
+  .reset:hover{background:#fff;color:var(--ink)}
+  .datasource{margin-top:14px;font-family:var(--mono);font-size:11px;line-height:1.5;letter-spacing:.02em}
+  .datasource.ok{color:var(--good)}
+  .datasource.warn{color:var(--ink-faint)}
+
+  /* ---------- main header ---------- */
+  h1.title{
+    font-family:var(--serif);font-weight:700;font-size:clamp(40px,5vw,64px);
+    letter-spacing:-.01em;line-height:1.02;margin:0 0 4px;
+  }
+  .sub{font-size:17px;color:var(--ink-soft);margin:0 0 30px}
+  .sub .tk{font-family:var(--mono);font-size:14px;color:var(--ink-faint)}
+
+  /* ---------- panels ---------- */
+  .panels{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+  @media(max-width:980px){.panels{grid-template-columns:1fr}}
+  .panel{
+    background:var(--card);border:1px solid var(--rule);border-radius:12px;
+    padding:30px 30px 34px;box-shadow:0 1px 2px rgba(40,34,20,.04);
+  }
+  .panel h2{
+    font-family:var(--serif);font-weight:700;font-size:25px;margin:0 0 4px;
+  }
+  .panel .lead{font-size:14.5px;color:var(--ink-soft);margin:0 0 22px;
+    padding-bottom:18px;border-bottom:1px solid var(--rule)}
+
+  /* ---------- stacked bars ---------- */
+  .stack{border-radius:9px;overflow:hidden}
+  .band{
+    color:#fff;text-align:center;padding:20px 14px;position:relative;
+    transition:flex-basis .5s cubic-bezier(.4,0,.2,1);
+  }
+  .band .cap{font-size:13.5px;font-weight:600;letter-spacing:.01em;opacity:.95;margin-bottom:4px}
+  .band .amt{font-family:var(--serif);font-size:31px;font-weight:700;line-height:1}
+  .band.book{background:var(--book)}
+  .band.moat{background:var(--moat)}
+  .band.growth{background:var(--growth)}
+  .band.neg{background:repeating-linear-gradient(45deg,#9a9488,#9a9488 9px,#8a8478 9px,#8a8478 18px)}
+  .band.tiny .amt{font-size:21px}
+  .band.tiny .cap{font-size:11.5px}
+
+  /* ---------- breakdown rows ---------- */
+  .rows{margin-top:24px}
+  .row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+    padding:13px 4px;border-bottom:1px solid var(--rule)}
+  .row .k{font-size:14.5px;color:var(--ink-soft)}
+  .row .k .tag{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:9px;vertical-align:middle}
+  .row .v{font-family:var(--mono);font-size:15px;color:var(--ink);white-space:nowrap}
+  .row.total{background:var(--shade);margin-top:2px;border-bottom:none;border-radius:7px;
+    padding:14px 12px}
+  .row.total .k{font-weight:600;color:var(--ink)}
+  .row.total .v{font-weight:600;font-size:16px}
+  .v.pos{color:var(--good)} .v.negv{color:var(--bad)}
+
+  /* ---------- meaning callouts ---------- */
+  .means{margin-top:24px;border-radius:9px;padding:16px 18px;font-size:14px;line-height:1.6;color:var(--ink-soft)}
+  .means.pb{background:var(--blue-tint);border-left:4px solid var(--blue-edge)}
+  .means.pe{background:var(--red-tint);border-left:4px solid var(--red-edge)}
+  .means b{color:var(--ink)}
+  .means .term{font-style:italic}
+  .means.pb .term{color:var(--blue-edge)}
+  .means.pe .term{color:var(--red-edge)}
+
+  /* ---------- formula block ---------- */
+  .formula{
+    margin-top:18px;background:var(--shade);border-radius:8px;padding:15px 18px;
+    font-family:var(--mono);font-size:13px;line-height:1.7;color:var(--ink-soft);
+    white-space:pre-wrap;word-break:break-word;
+  }
+  .formula .hl{color:var(--ink)}
+
+  /* ---------- lower sections ---------- */
+  .section{margin-top:36px}
+  .section-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;
+    padding-bottom:14px;border-bottom:1px solid var(--rule-strong)}
+  .section-head h2{font-family:var(--serif);font-weight:700;font-size:27px;margin:0}
+  .section-head .note{font-size:14px;color:var(--ink-soft)}
+
+  /* grid */
+  .gridwrap{overflow-x:auto;margin-top:18px}
+  table.grid{border-collapse:collapse;width:100%;min-width:560px;font-family:var(--mono);font-size:13.5px}
+  table.grid caption{caption-side:top;text-align:left;font-family:var(--sans);font-size:14px;
+    color:var(--ink-soft);margin-bottom:12px}
+  table.grid th,table.grid td{padding:11px 8px;text-align:center;border:1px solid var(--rule)}
+  table.grid thead th{background:var(--shade);color:var(--ink);font-weight:600}
+  table.grid th.corner{background:transparent;border:none}
+  table.grid tbody th{background:var(--shade);color:var(--ink);font-weight:600;white-space:nowrap}
+  table.grid td{color:var(--ink-soft);background:var(--card)}
+  table.grid td.match{background:var(--growth);color:#fff;font-weight:700;
+    box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 3px var(--growth)}
+  table.grid td.near{background:#f3ded6;color:var(--ink)}
+  .gridkey{font-size:13px;color:var(--ink-faint);margin-top:12px}
+  .gridkey .sw{display:inline-block;width:11px;height:11px;border-radius:2px;background:var(--growth);
+    margin:0 5px 0 14px;vertical-align:middle}
+
+  /* scenarios — the indifference curve */
+  .scen-intro{font-size:14.5px;color:var(--ink-soft);margin:16px 0 20px;max-width:760px}
+  .scen-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:820px){.scen-grid{grid-template-columns:1fr}}
+  .scen{background:var(--card);border:1px solid var(--rule);border-radius:11px;padding:22px 22px 24px;
+    border-top:3px solid var(--moat)}
+  .scen.mid{border-top-color:var(--growth)}
+  .scen .tagn{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-faint);margin-bottom:6px}
+  .scen h3{font-family:var(--serif);font-size:19px;margin:0 0 14px;font-weight:700}
+  .scen .pair{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--rule)}
+  .scen .pair:last-of-type{border-bottom:none}
+  .scen .pair .pl{font-size:13.5px;color:var(--ink-soft)}
+  .scen .pair .pv{font-family:var(--mono);font-size:14px;color:var(--ink)}
+  .scen .verdict{margin-top:14px;font-size:13px;line-height:1.5;color:var(--ink-soft)}
+  .scen .verdict b{color:var(--ink)}
+
+  .footer{margin-top:48px;padding-top:22px;border-top:1px solid var(--rule);
+    font-size:12.5px;color:var(--ink-faint);line-height:1.6;max-width:900px}
+  .footer code{font-family:var(--mono);background:var(--shade);padding:1px 5px;border-radius:4px}
+
+  @media(prefers-reduced-motion:reduce){.band{transition:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <p class="eyebrow">Leibowitz Framework</p>
+
+    <label class="field-label" for="country">Select market</label>
+    <select id="country" class="country" aria-label="Select market"></select>
+
+    <div class="stats" id="stats">
+      <div class="stat"><label>Ticker</label><span class="val" id="ticker"></span></div>
+      <div class="stat"><label for="in-pb">P/B</label>
+        <span class="val"><input id="in-pb" type="number" step="0.1" inputmode="decimal"><span class="unit">×</span></span></div>
+      <div class="stat"><label for="in-pe">P/E</label>
+        <span class="val"><input id="in-pe" type="number" step="0.1" inputmode="decimal"><span class="unit">×</span></span></div>
+      <div class="stat"><label for="in-roe">ROE</label>
+        <span class="val"><input id="in-roe" type="number" step="0.1" inputmode="decimal"><span class="unit">%</span></span></div>
+      <div class="stat"><label for="in-growth">Growth (5Y)</label>
+        <span class="val"><input id="in-growth" type="number" step="0.1" inputmode="decimal"><span class="unit">%</span></span></div>
+      <div class="stat"><label for="in-coc">Cost of Capital</label>
+        <span class="val"><input id="in-coc" type="number" step="0.1" inputmode="decimal"><span class="unit">%</span></span></div>
+    </div>
+    <p class="editnote">Every figure is editable — changes preview instantly but reset on refresh. To make an update permanent, edit <b>markets.csv</b> and redeploy.</p>
+    <button class="reset" id="reset" type="button">Reset this market</button>
+    <p class="datasource" id="datasource"></p>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+    <h1 class="title" id="mkt-name">—</h1>
+    <p class="sub" id="mkt-sub">What the market price is actually betting on, explained in two ways.</p>
+
+    <div class="panels">
+      <!-- ---- P/B ---- -->
+      <section class="panel" aria-labelledby="pb-h">
+        <h2 id="pb-h">P/B Decomposition</h2>
+        <p class="lead">What you're paying per dollar of book value.</p>
+
+        <div class="stack" id="pb-stack">
+          <div class="band book" id="b-book">
+            <div class="cap">Book Value</div><div class="amt">$1.00</div>
+          </div>
+          <div class="band moat" id="b-moat">
+            <div class="cap">Moat Premium</div><div class="amt" id="b-moat-amt">$0.00</div>
+          </div>
+          <div class="band growth" id="b-growth">
+            <div class="cap">Growth Premium</div><div class="amt" id="b-growth-amt">$0.00</div>
+          </div>
+        </div>
+
+        <div class="rows">
+          <div class="row"><span class="k"><span class="tag" style="background:var(--book)"></span>Book value (what's already there)</span><span class="v">1.0×</span></div>
+          <div class="row"><span class="k"><span class="tag" style="background:var(--moat)"></span>Moat premium (ROE−CoC)/CoC, capitalized</span><span class="v" id="r-moat">—</span></div>
+          <div class="row"><span class="k"><span class="tag" style="background:var(--growth)"></span>Growth premium (everything else)</span><span class="v" id="r-growth">—</span></div>
+          <div class="row total"><span class="k">Market P/B</span><span class="v" id="r-pb">—</span></div>
+        </div>
+
+        <div class="means pb">
+          <b>What this means:</b> <span class="term">Book value</span> is what's already there.
+          <span class="term">Moat premium</span> is the present value of the competitive advantage
+          (the ROE spread over cost of capital, capitalized forever).
+          <span class="term">Growth premium</span> is what you're paying for earnings to grow beyond zero.
+          If either assumption fails, the multiple unravels.
+        </div>
+
+        <div class="formula">P/B = Book (1.0×) + Moat (<span class="hl">$ROE−r / r</span>) + Growth (<span class="hl">$future earnings</span>)
+Moat = (ROE − CoC) / CoC, capitalized forever</div>
+      </section>
+
+      <!-- ---- P/E ---- -->
+      <section class="panel" aria-labelledby="pe-h">
+        <h2 id="pe-h">P/E Decomposition</h2>
+        <p class="lead">What earnings multiple is implied, and for how long.</p>
+
+        <div class="rows" style="margin-top:4px">
+          <div class="row"><span class="k">Base P/E (1/CoC, zero growth)</span><span class="v" id="r-base">—</span></div>
+          <div class="row"><span class="k">Implied years of moat @ current growth</span><span class="v" id="r-years">—</span></div>
+          <div class="row"><span class="k">Present value of moat years</span><span class="v" id="r-pvmoat">—</span></div>
+          <div class="row total"><span class="k">Market P/E</span><span class="v" id="r-pe">—</span></div>
+        </div>
+
+        <div class="means pe">
+          <b>What this means:</b> <span class="term">Base P/E (1/CoC)</span> is the multiple of a
+          zero-growth business. <span class="term">Moat years</span> is how long the market assumes
+          competitive advantages persist. <span class="term">Growth bet</span> tells you: if the moat
+          lasts N years with G% growth, what P/E results? If you don't believe this (N, G) combination,
+          the price is wrong.
+        </div>
+
+        <div class="formula">Implied Years: solve for N where
+  Market P/E = 1/r + Moat&nbsp;PV(N years)
+<span class="hl">Or: what years × growth combo justifies this P/E?</span></div>
+      </section>
+    </div>
+
+    <!-- ---- SENSITIVITY GRID ---- -->
+    <section class="section" aria-labelledby="grid-h">
+      <div class="section-head">
+        <h2 id="grid-h">Years × Growth</h2>
+        <span class="note">The P/E implied by every combination of moat length and growth.</span>
+      </div>
+      <div class="gridwrap">
+        <table class="grid" id="grid">
+          <caption>Each cell is the P/E you'd justify if the moat lasts that many years at that growth rate. The highlighted cell is the market's current price.</caption>
+        </table>
+      </div>
+      <p class="gridkey"><span class="sw"></span>matches today's Market P/E&nbsp;<span id="grid-mkt"></span></p>
+      <p class="gridkey" id="grid-floor" style="display:none">No cell matches — today's price sits <b>below</b> a zero-growth business, so the market is pricing in decline rather than any moat horizon.</p>
+    </section>
+
+    <!-- ---- SCENARIOS / INDIFFERENCE CURVE ---- -->
+    <section class="section" aria-labelledby="scen-h">
+      <div class="section-head">
+        <h2 id="scen-h">Three ways to justify the price</h2>
+        <span class="note">Different bets, same multiple.</span>
+      </div>
+      <p class="scen-intro">The market P/E doesn't tell you <em>which</em> story it believes. These three
+        combinations of moat length and growth all produce roughly the same multiple — so the real question
+        isn't the price, it's which of these you find plausible.</p>
+      <div class="scen-grid" id="scenarios"></div>
+    </section>
+
+    <div class="footer" id="footer"></div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   DATA SOURCE
+   The dashboard reads markets.csv at load time — that file is the
+   single source of truth. To update the numbers: edit markets.csv,
+   commit, push. The site refreshes with no HTML changes.
+
+   Columns: key,name,sub,ticker,pe,pb,roe,growth,coc
+     pe = trailing P/E · pb = price/book · roe = 5Y median ROE (%)
+     growth = 5Y EPS CAGR (%) · coc = 10Y yield + equity risk premium (%)
+
+   The FALLBACK below is used only when markets.csv can't be fetched —
+   e.g. when this file is opened directly from disk (browsers block
+   local file reads). Once it's served over http (Vercel, or a local
+   dev server) the CSV loads normally.
+   ============================================================ */
+const FALLBACK = {
+  nasdaq:{name:"Nasdaq-100", sub:"US Tech",      ticker:"QQQM",   pe:36.5, pb:15.7, roe:39.0, coc:9.0,  growth:12.0},
+  sp500: {name:"S&P 500",    sub:"US Large Cap", ticker:"SPX",    pe:25.0, pb:5.7,  roe:18.0, coc:9.0,  growth:8.5},
+  india: {name:"India",      sub:"NIFTY 50",     ticker:"NIFTY",  pe:22.5, pb:3.2,  roe:15.0, coc:10.0, growth:13.0},
+  china: {name:"China",      sub:"CSI 300",      ticker:"CSI300", pe:12.5, pb:1.8,  roe:10.0, coc:7.8,  growth:4.0},
+  japan: {name:"Japan",      sub:"TOPIX",        ticker:"TOPIX",  pe:18.0, pb:1.3,  roe:9.0,  coc:5.5,  growth:7.0},
+  brazil:{name:"Brazil",     sub:"Ibovespa",     ticker:"IBOV",   pe:9.8,  pb:1.3,  roe:13.0, coc:17.0, growth:7.0},
+  korea: {name:"Korea",      sub:"KOSPI",        ticker:"KOSPI",  pe:10.5, pb:0.9,  roe:8.0,  coc:8.5,  growth:4.0},
+};
+const FALLBACK_ORDER=["nasdaq","sp500","india","china","japan","brazil","korea"];
+
+/* mutable state — populated by loadData() */
+let MARKETS = {};
+let ORDER   = [];
+let live    = {};
+let current = null;
+
+/* ---------- CSV parsing (handles quoted fields; no dependencies) ---------- */
+function splitCSVLine(line){
+  const out=[]; let cur="", q=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else { if(c==='"') q=true; else if(c===","){out.push(cur);cur="";} else cur+=c; }
+  }
+  out.push(cur); return out;
+}
+function parseCSV(text){
+  const lines=text.replace(/\r\n?/g,"\n").split("\n").filter(l=>l.trim().length);
+  if(!lines.length) return [];
+  const head=splitCSVLine(lines[0]).map(h=>h.trim());
+  return lines.slice(1).map(line=>{
+    const cells=splitCSVLine(line); const o={};
+    head.forEach((h,i)=>o[h]=(cells[i]??"").trim());
+    return o;
+  });
+}
+function rowsToMarkets(rows){
+  const m={}, order=[];
+  rows.forEach(r=>{
+    if(!r.key) return;
+    m[r.key]={ name:r.name, sub:r.sub, ticker:r.ticker,
+               pe:+r.pe, pb:+r.pb, roe:+r.roe, coc:+r.coc, growth:+r.growth };
+    order.push(r.key);
+  });
+  return {m,order};
+}
+
+/* ---------- core Leibowitz math ---------- */
+// Moat premium per $1 of book: capitalized ROE spread.
+const moatPremiumPB = (roe,coc) => (roe-coc)/coc;
+// Present value of N years of "moat earnings": $1 at t=1 growing at g, discounted at r.
+function moatPV(N, g, r){
+  if(N<=0) return 0;
+  const x=(1+g)/(1+r);
+  if(Math.abs(x-1)<1e-9) return N/(1+r);
+  return (1/(1+r))*((Math.pow(x,N)-1)/(x-1));
+}
+// Invert moatPV: how many years of moat does the market's premium imply?
+function impliedYears(premium, g, r){
+  if(premium<=0) return 0;
+  let lo=0, hi=1, cap=moatPV(1e6,g,r);          // theoretical ceiling (matters when g<r)
+  if(premium>=cap) return Infinity;
+  while(moatPV(hi,g,r)<premium && hi<1e5) hi*=2;
+  for(let i=0;i<80;i++){const m=(lo+hi)/2; (moatPV(m,g,r)<premium)?lo=m:hi=m;}
+  return (lo+hi)/2;
+}
+
+const fmtX  = n => (n>=0?"":"−")+Math.abs(n).toFixed(1)+"×";
+const fmtUSD= n => (n>=0?"$":"−$")+Math.abs(n).toFixed(2);
+
+/* ---------- build country dropdown ---------- */
+const sel=document.getElementById("country");
+function buildDropdown(){
+  sel.innerHTML="";
+  ORDER.forEach(k=>{
+    const o=document.createElement("option");
+    o.value=k; o.textContent=`${MARKETS[k].name} (${MARKETS[k].sub})`;
+    sel.appendChild(o);
+  });
+}
+
+/* ---------- render everything ---------- */
+function render(){
+  const d=live[current];
+  const r=d.coc/100, g=d.growth/100, roe=d.roe/100;
+
+  document.getElementById("mkt-name").textContent=d.name;
+  document.getElementById("mkt-sub").innerHTML=
+    `What the market price is actually betting on, explained in two ways. <span class="tk">${d.ticker}</span>`;
+  document.getElementById("ticker").textContent=d.ticker;
+
+  /* ---- P/B ---- */
+  const moatPB   = moatPremiumPB(roe,r);
+  const growthPB = d.pb - 1 - moatPB;
+  document.getElementById("b-moat-amt").textContent=fmtUSD(moatPB);
+  document.getElementById("b-growth-amt").textContent=fmtUSD(growthPB);
+  document.getElementById("r-moat").innerHTML  = `<span class="${moatPB<0?'negv':''}">${fmtUSD(moatPB)}</span>`;
+  document.getElementById("r-growth").innerHTML= `<span class="${growthPB<0?'negv':''}">${fmtUSD(growthPB)}</span>`;
+  document.getElementById("r-pb").textContent  = fmtX(d.pb);
+
+  // proportional band heights (use positive share; negatives shown as a thin hatched strip)
+  const parts=[{el:"b-book",v:1,amtEl:null},
+               {el:"b-moat",v:moatPB,amtEl:"b-moat-amt"},
+               {el:"b-growth",v:growthPB,amtEl:"b-growth-amt"}];
+  const posTotal=parts.reduce((s,p)=>s+Math.max(p.v,0),0)||1;
+  parts.forEach(p=>{
+    const node=document.getElementById(p.el);
+    const neg = p.v<0;
+    const share=Math.max(p.v,0)/posTotal;
+    const px = neg ? 46 : Math.max(56, 96 + share*360);   // min heights keep labels legible
+    node.style.height=px+"px";
+    node.style.display="flex";node.style.flexDirection="column";
+    node.style.justifyContent="center";
+    node.classList.toggle("tiny", !neg && share<0.10);
+    node.classList.toggle("neg", neg);
+  });
+
+  /* ---- P/E ---- */
+  const base=1/r;
+  const premium=d.pe-base;
+  const yrs=impliedYears(premium,g,r);
+  document.getElementById("r-base").textContent=fmtX(base);
+  document.getElementById("r-pvmoat").innerHTML=`<span class="${premium<0?'negv':''}">${fmtX(premium)}</span>`;
+  document.getElementById("r-pe").textContent=fmtX(d.pe);
+  let yrsTxt;
+  if(premium<=0) yrsTxt="0 yrs — priced below no-growth value";
+  else if(!isFinite(yrs)) yrsTxt="∞ — growth ≥ discount rate";
+  else yrsTxt=yrs.toFixed(1)+" yrs";
+  document.getElementById("r-years").textContent=yrsTxt;
+
+  buildGrid(d,g,r,base);
+  buildScenarios(d,g,r,base,premium);
+  buildFooter(d,base,moatPB,growthPB,yrs,premium);
+}
+
+/* ---- sensitivity grid ---- */
+function buildGrid(d,g,r,base){
+  const years=[5,10,15,20,25,30,40];
+  // growth columns centred on this market's own growth
+  const gc=Math.round(d.growth);
+  const growths=[gc-6,gc-3,gc,gc+3,gc+6].filter(v=>v> -2);
+  const tbl=document.getElementById("grid");
+  const cap=tbl.querySelector("caption");
+  tbl.innerHTML=""; tbl.appendChild(cap);
+
+  // find the single closest cell to market P/E
+  let best={diff:Infinity};
+  const cells=[];
+  years.forEach(N=>growths.forEach(G=>{
+    const pe=base+moatPV(N,G/100,r);
+    const diff=Math.abs(pe-d.pe);
+    cells.push({N,G,pe,diff});
+    if(diff<best.diff) best={N,G,diff};
+  }));
+  // only call it a "match" if a cell genuinely lands near market P/E.
+  // when the price sits below the grid floor (premium<=0), nothing matches.
+  const hasMatch = best.diff <= 1.5;
+
+  const thead=document.createElement("thead");
+  let hr="<tr><th class='corner'></th>";
+  growths.forEach(G=>hr+=`<th>${G}% growth</th>`);
+  thead.innerHTML=hr+"</tr>"; tbl.appendChild(thead);
+
+  const tb=document.createElement("tbody");
+  years.forEach(N=>{
+    let row=`<tr><th>${N} yrs</th>`;
+    growths.forEach(G=>{
+      const c=cells.find(c=>c.N===N&&c.G===G);
+      const isBest = hasMatch && (N===best.N&&G===best.G);
+      const near = !isBest && hasMatch && c.diff<=2;
+      row+=`<td class="${isBest?'match':near?'near':''}">${c.pe.toFixed(1)}×</td>`;
+    });
+    tb.innerHTML+=row+"</tr>";
+  });
+  tbl.appendChild(tb);
+  const key=document.getElementById("grid-mkt");
+  key.parentElement.style.display = hasMatch ? "" : "none";
+  const floorNote=document.getElementById("grid-floor");
+  if(floorNote) floorNote.style.display = hasMatch ? "none" : "";
+  key.textContent=`(${fmtX(d.pe)})`;
+}
+
+/* ---- scenarios: three (N,G) points that each reproduce the market P/E ---- */
+function buildScenarios(d,g,r,base,premium){
+  const host=document.getElementById("scenarios");
+  const yrsAt = G => impliedYears(premium, G/100, r);   // years needed at growth G to hit market P/E
+
+  const defs=[
+    {tag:"Scenario A", title:"Long, slow moat",  G:Math.max(d.growth-5,2),
+      blurb:"Lower growth, but the advantage has to last much longer."},
+    {tag:"Scenario B", title:"The market's read", G:d.growth,
+      blurb:"Today's growth rate, sustained for the implied horizon.", mid:true},
+    {tag:"Scenario C", title:"Short, fast moat", G:d.growth+5,
+      blurb:"Higher growth, but it only needs to persist briefly."},
+  ];
+  host.innerHTML="";
+  defs.forEach(s=>{
+    const N=yrsAt(s.G);
+    let nTxt = premium<=0 ? "n/a" : (!isFinite(N)? "∞" : N.toFixed(0)+" yrs");
+    let plaus;
+    if(premium<=0){
+      plaus="The price sits <b>below</b> a no-growth business — the market expects this market to <b>shrink</b>, so no moat horizon applies.";
+    } else if(!isFinite(N)){
+      plaus="At this growth rate the discounted stream never converges — the market would need <b>permanent</b> super-normal growth.";
+    } else {
+      const verdict = N>30 ? "demands an implausibly durable moat"
+                    : N<6  ? "needs only a brief edge — the easiest bet to defend"
+                    : "is a moderate, defensible assumption";
+      plaus=`This <b>${verdict}</b>.`;
+    }
+    const el=document.createElement("div");
+    el.className="scen"+(s.mid?" mid":"");
+    el.innerHTML=`
+      <div class="tagn">${s.tag}</div>
+      <h3>${s.title}</h3>
+      <div class="pair"><span class="pl">Growth assumed</span><span class="pv">${s.G.toFixed(1)}%</span></div>
+      <div class="pair"><span class="pl">Moat years needed</span><span class="pv">${nTxt}</span></div>
+      <div class="pair"><span class="pl">Resulting P/E</span><span class="pv">${fmtX(d.pe)}</span></div>
+      <div class="verdict">${plaus} <span style="color:var(--ink-faint)">${s.blurb}</span></div>`;
+    host.appendChild(el);
+  });
+}
+
+function buildFooter(d,base,moatPB,growthPB,yrs,premium){
+  const f=document.getElementById("footer");
+  const yTxt = premium<=0 ? "no positive moat horizon" : (!isFinite(yrs)?"an unbounded horizon":`about ${yrs.toFixed(0)} years`);
+  f.innerHTML=`
+    <p>For <b>${d.name}</b>, paying <code>${fmtX(d.pb)}</code> book and <code>${fmtX(d.pe)}</code> earnings
+    means the market is capitalizing a moat worth <code>${fmtUSD(moatPB)}</code> per dollar of book and
+    betting growth persists for ${yTxt}. Change any input on the left to test a different view —
+    if the (years × growth) combination looks unbelievable, the price is the thing that's wrong.</p>
+    <p style="margin-top:10px">Framework after Martin Leibowitz's franchise-value decomposition.
+    Figures are illustrative placeholders; replace the <code>MARKETS</code> object with live data.
+    Pure HTML/CSS/JS — no build step, no dependencies.</p>`;
+}
+
+/* ---------- wiring ---------- */
+const inputs={pb:"in-pb",pe:"in-pe",roe:"in-roe",growth:"in-growth",coc:"in-coc"};
+function syncInputs(){
+  const d=live[current];
+  for(const key in inputs) document.getElementById(inputs[key]).value=d[key];
+}
+for(const key in inputs){
+  document.getElementById(inputs[key]).addEventListener("input",e=>{
+    const v=parseFloat(e.target.value);
+    if(!isNaN(v)){ live[current][key]=v; render(); }
+  });
+}
+sel.addEventListener("change",e=>{current=e.target.value; syncInputs(); render();});
+document.getElementById("reset").addEventListener("click",()=>{
+  live[current]=JSON.parse(JSON.stringify(MARKETS[current]));
+  syncInputs(); render();
+});
+
+/* ---------- data-source indicator ---------- */
+function showSource(ok){
+  const el=document.getElementById("datasource");
+  if(!el) return;
+  el.textContent = ok
+    ? "● Live from markets.csv"
+    : "● Built-in sample data. markets.csv loads automatically once deployed — locally, open via a dev server to read it.";
+  el.className = "datasource"+(ok?" ok":" warn");
+}
+
+/* ---------- load data, then start ---------- */
+async function loadData(){
+  let rows=null, ok=false;
+  try{
+    const res=await fetch("markets.csv",{cache:"no-store"});
+    if(res.ok){ const parsed=parseCSV(await res.text()); if(parsed.length){ rows=parsed; ok=true; } }
+  }catch(e){ /* file:// or missing — fall back to built-in data */ }
+
+  if(ok){ const {m,order}=rowsToMarkets(rows); MARKETS=m; ORDER=order; }
+  else  { MARKETS=JSON.parse(JSON.stringify(FALLBACK)); ORDER=[...FALLBACK_ORDER]; }
+
+  live=JSON.parse(JSON.stringify(MARKETS));
+  current=ORDER[0];
+  buildDropdown();
+  sel.value=current;
+  syncInputs();
+  render();
+  showSource(ok);
+}
+loadData();
+</script>
+</body>
+</html>
